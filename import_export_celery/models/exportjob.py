@@ -1,4 +1,7 @@
 # Copyright (C) 2019 o.s. Auto*Mat
+import pickle
+from base64 import b64decode
+
 from django.utils import timezone
 import json
 
@@ -104,14 +107,20 @@ class ExportJob(models.Model):
         return self._content_type
 
     def get_queryset(self):
-        pks = json.loads(self.queryset)
-        # If customised queryset for the model exists
-        # then it'll apply filter on that otherwise it'll
-        # apply filter directly on the model.
-        resource_class = self.get_resource_class()
-        if hasattr(resource_class, "get_export_queryset"):
-            return resource_class().get_export_queryset().filter(pk__in=pks)
-        return self.get_content_type().model_class().objects.filter(pk__in=pks)
+        queryset_spec = json.loads(self.queryset)
+        if isinstance(queryset_spec, list):
+            # If customised queryset for the model exists
+            # then it'll apply filter on that otherwise it'll
+            # apply filter directly on the model.
+            resource_class = self.get_resource_class()
+            if hasattr(resource_class, "get_export_queryset"):
+                return resource_class().get_export_queryset().filter(pk__in=queryset_spec)
+            return self.get_content_type().model_class().objects.filter(pk__in=queryset_spec)
+        elif isinstance(queryset_spec, dict):
+            query = pickle.loads(b64decode(queryset_spec["query"]))  # noqa: S301
+            queryset = self.get_content_type().model_class().objects.all()
+            queryset.query = query
+            return queryset
 
     def get_resource_choices(self):
         return [
